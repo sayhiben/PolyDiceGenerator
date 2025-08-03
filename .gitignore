@@ -1,0 +1,47 @@
+# OpenSCAD generated files
+*.stl
+*.off
+*.amf
+*.3mf
+*.csg
+*.dxf
+*.echo
+
+# OpenSCAD backup files
+*.scad.bak
+*~
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Output directories (common names)
+output/
+exports/
+renders/
+stl/
+build/
+
+# Log files
+*.log
+
+# Claude configuration
+.claude/

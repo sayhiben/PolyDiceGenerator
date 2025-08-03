@@ -556,10 +556,10 @@ module joiner(l=40, w=10, base=10, ang=30, screwsize, anchor=CENTER, spin=0, ori
 // Synopsis: Creates a possibly tapered dovetail shape.
 // SynTags: Geom
 // Topics: Joiners, Parts
-// See Also: joiner(), snap_pin(), rabbit_clip()
+// See Also: joiner(), snap_pin(), rabbit_clip(), partition(), partition_mask(), partition_cut_mask()
 //
 // Usage:
-//   dovetail(gender, w=|width, h=|height, slide|thickness=, [slope=|angle=], [taper=|back_width=], [chamfer=], [r=|radius=], [round=], [extra=], [$slop=])
+//   dovetail(gender, w=|width, h=|height, slide|thickness=, [slope=|angle=], [taper=|back_width=], [chamfer=], [r=|radius=], [round=], [extra=], [entry_slot_length=], [$slop=])
 //
 // Description:
 //   Produces a possibly tapered dovetail joint shape to attach to or subtract from two parts you wish to join together.
@@ -569,9 +569,17 @@ module joiner(l=40, w=10, base=10, ang=30, screwsize, anchor=CENTER, spin=0, ori
 //   parallel to the Y axis and projecting upwards, so in its default orientation it will slide together with a translation
 //   in the positive Y direction.  The gender determines whether the shape is meant to be added to your model or
 //   differenced, and it also changes the anchor and orientation.  The default anchor for dovetails is BOTTOM;
-//   the default orientation depends on the gender, with male dovetails oriented UP and female ones DOWN.  The dovetails by default
-//   have extra extension of 0.01 for unions and differences.  You should ensure that attachment is done with overlap=0 to ensure that
-//   the sizing and positioning is correct.  To adjust the fit, use the $slop variable, which increases the depth and width of
+//   the default orientation depends on the gender, with male dovetails oriented UP and female ones DOWN.
+//   .
+//   For a male dovetail of length X to slide into a female dovetail, there must be a space of length X at the
+//   end of the dovetail.  In many cases, this space is naturally present, but if you want to create dovetails
+//   in the middle of a surface, you need cut cut out an additional space to allow the male dovetail space to enter.
+//   Setting `entry_slot_length=X` for a female dovetail will add an entry slot of length X, projecting forward
+//   from the dovetail mask.  Anchoring is done on the dovetail itself: the slot is ignored by anchoring.
+//   .
+//   The dovetails by default have extra extension of 0.01 for unions and differences.
+//   You should ensure that attachment is done with overlap=0 to ensure
+//   sizing and positioning is correct.  To adjust the fit, use the $slop variable, which increases the depth and width of
 //   the female part of the joint to allow a clearance gap of $slop on each of the three sides.
 //
 // Arguments:
@@ -589,6 +597,7 @@ module joiner(l=40, w=10, base=10, ang=30, screwsize, anchor=CENTER, spin=0, ori
 //   round = true to round both corners of the dovetail and give it a puzzle piece look.  Default: false.
 //   $slop = Increase the width of socket by double this amount and depth by this amount to allow adjustment of the fit.
 //   extra = amount of extra length and base extension added to dovetails for unions and differences.  Default: 0.01
+//   entry_slot_length = length of a mask of sufficient width and depth for a male dovetail to fit ahead of the female dovetail. Ignored when gender == "male".
 // Example: Ordinary straight dovetail, male version (sticking up) and female version (below the xy plane)
 //   dovetail("male", width=15, height=8, slide=30);
 //   right(20) dovetail("female", width=15, height=8, slide=30);
@@ -640,8 +649,19 @@ module joiner(l=40, w=10, base=10, ang=30, screwsize, anchor=CENTER, spin=0, ori
 //   diff("remove")
 //     cuboid([50,30,10])
 //       tag("remove")position(TOP+BACK) xcopies(10,5) dovetail("female", slide=10, width=7, taper=4, height=4, anchor=BOTTOM+FRONT,spin=180);
-function dovetail(gender, width, height, slide, h, w, angle, slope, thickness, taper, back_width, chamfer, extra=0.01, r, radius, round=false, anchor=BOTTOM, spin=0, orient) = no_function("dovetail");
-module dovetail(gender, width, height, slide, h, w, angle, slope, thickness, taper, back_width, chamfer, extra=0.01, r, radius, round=false, anchor=BOTTOM, spin=0, orient)
+// Example: Housed sliding dovetail (similar to okuri ari).  If the left piece is rotated 90 degrees clockwise, it can be inserted downward with the male dovetail entering the entry slot, then sliding backward, making a 40x40x20 cuboid with no visible connectors. The opening is 2 units longer than the male dovetail so it's easier to assemble.
+//   xdistribute(spacing=60){
+//     cuboid([10,40,40])
+//       attach(RIGHT,BOT,align=BACK,spin=90,inset=5)
+//       dovetail("male", slide=15, width=20, height=8, slope=2);
+//     diff()
+//       cuboid([40,40,10])
+//         attach(TOP,BOT,align=BACK,inside=true,inset=5)
+//           tag("remove") dovetail("female", slide=15, width=20,
+//                                  height=8, slope=2, entry_slot_length=17);
+//   }
+function dovetail(gender, width, height, slide, h, w, angle, slope, thickness, taper, back_width, chamfer, extra=0.01, entry_slot_length=0, r, radius, round=false, anchor=BOTTOM, spin=0, orient) = no_function("dovetail");
+module dovetail(gender, width, height, slide, h, w, angle, slope, thickness, taper, back_width, chamfer, extra=0.01, entry_slot_length=0, r, radius, round=false, anchor=BOTTOM, spin=0, orient)
 {
     radius = get_radius(r1=radius,r2=r);
     slide = one_defined([slide,thickness],"slide,thickness");
@@ -664,7 +684,7 @@ module dovetail(gender, width, height, slide, h, w, angle, slope, thickness, tap
 
     // Need taper angle for computing width adjustment, but not used elsewhere
     taper_ang = is_def(taper) ? taper
-              : is_def(back_width) ? atan((back_width-width)/2/slide)
+              : is_def(back_width) ? atan((back_width-w)/2/slide)
               : 0;
     // This is the adjustment factor for width to grow in the direction normal to the dovetail face
     wfactor = sqrt( 1/slope^2 + 1/cos(taper_ang)^2 );
@@ -687,7 +707,7 @@ module dovetail(gender, width, height, slide, h, w, angle, slope, thickness, tap
 
     type = is_def(chamfer) && chamfer>0 ? "chamfer" : "circle";
 
-    smallend_half = round_corners(
+    bigend_half = round_corners(
         move(
             [0,-slide/2-extra,0],
             p=[
@@ -700,22 +720,22 @@ module dovetail(gender, width, height, slide, h, w, angle, slope, thickness, tap
         method=type, cut = fullsize, closed=false
     );
 
-    smallend_points = concat(select(smallend_half, 1, -2), [down(extra,p=select(smallend_half, -2))]);
+    bigend_points = concat(select(bigend_half, 1, -2), [down(extra,p=select(bigend_half, -2))]);
     offset = is_def(taper) ? -slide * tan(taper)
            : is_def(back_width) ? (back_width-width) / 2
            : 0;
-    bigend_points = move([offset+2*extra_offset,slide+2*extra,0], p=smallend_points);
+    smallend_points = move([offset+2*extra_offset,slide+2*extra,0], p=bigend_points);
 
-    bigenough = all_nonnegative(column(smallend_half,0)) && all_nonnegative(column(bigend_points,0));
+    bigenough = all_nonnegative(column(bigend_half,0)) && all_nonnegative(column(smallend_points,0));
 
-    assert(bigenough, "Width of dovetail is not large enough for its geometry (angle and taper");
+    assert(bigenough, "Width (or back_width) of dovetail is not large enough for its geometry (angle and taper");
 
     //adjustment = $overlap * (gender == "male" ? -1 : 1);  // Adjustment for default overlap in attach()
     adjustment = 0;    // Default overlap is assumed to be zero
 
     // This code computes the true normal from which the exact width factor can be obtained
     // as the x component.  Comparing to wfactor above shows that they agree.
-    //   pts = [smallend_points[0], smallend_points[1], bigend_points[1],bigend_points[0]];
+    //   pts = [bigend_points[0], bigend_points[1], smallend_points[1],smallend_points[0]];
     //   n = -polygon_normal(pts);
     //   echo(n=n);
     //   echo(invwfactor = 1/wfactor, error = n.x-1/wfactor);
@@ -726,11 +746,13 @@ module dovetail(gender, width, height, slide, h, w, angle, slope, thickness, tap
 
             skin(
                 [
-                    reverse(concat(smallend_points, xflip(p=reverse(smallend_points)))),
-                    reverse(concat(bigend_points, xflip(p=reverse(bigend_points))))
+                    reverse(concat(bigend_points, xflip(p=reverse(bigend_points)))),
+                    reverse(concat(smallend_points, xflip(p=reverse(smallend_points))))
                 ],
                 slices=0, convexity=4
-            );
+            )
+            if(entry_slot_length>0 && gender=="female")
+                down(extra) align(FWD,TOP,overlap=extra) cuboid([width-2*extra_offset,entry_slot_length+extra+get_slop(),height+extra]);
         }
         children();
     }
@@ -1193,7 +1215,7 @@ module rabbit_clip(type, length, width,  snap, thickness, depth, compression=0.1
     bounds = pointlist_bounds(rounded);
     extrapt = is_pin ? [] : [rounded[0] - [0,extra]];
     finalpath = is_pin ? rounded
-                       : let(withclearance=offset(rounded, r=-clearance))
+                       : let(withclearance=offset(rounded, r=-clearance, closed=false))
                          concat( [[withclearance[0].x,-extra]],
                                  withclearance,
                                  [[-withclearance[0].x,-extra]]);
@@ -1219,5 +1241,202 @@ module rabbit_clip(type, length, width,  snap, thickness, depth, compression=0.1
 }
 
 
+
+// Section: Splines
+
+// Module: hirth()
+// Synopsis: Creates a Hirth face spline that locks together two cylinders.
+// SynTags: Geom
+// Usage:
+//   hirth(n, ir|id=, or|od=, tooth_angle, [cone_angle=], [chamfer=], [rounding=], [base=], [crop=], [anchor=], [spin=], [orient=]
+// Description:
+//   Create a Hirth face spline.  The Hirth face spline is a joint that locks together two cylinders using radially
+//   positioned triangular teeth on the ends of the cylinders.  If the joint is held together (e.g. with a screw) then
+//   the two parts will rotate (or not) together.  The two parts of the regular Hirth spline joint are identical.
+//   Each tooth is a triangle that grows larger with radius.  You specify a nominal tooth angle; the actual tooth
+//   angle will be slightly different.
+//   .
+//   You can also specify a cone_angle which raises or lowers the angle of the teeth.  When you do this you need to
+//   mate splines with opposite angles such as -20 and +20.  The splines appear centered at the origin so that two
+//   splines will mate if their centers coincide.  Therefore `attach(CENTER,CENTER)` will produce two mating splines
+//   assuming that they are rotated correctly.  The bottom anchors will be at the bottom of the spline base.  The top
+//   anchors are at an arbitrary location and are not useful.  
+//   .
+//   By default the spline is created as a polygon with `2n` edges and the radius is the outer radius to the unchamfered corners.
+//   For large choices of `n` this will produce result that is close to circular.  For small `n` the result will be obviously polygonal.
+//   If you want a cylindrical result then set `crop=true`, which will intersect an oversized version of the joint with a suitable cylinder.
+//   Note that cropping makes the most difference when the tooth count is low.  
+//   .
+//   The teeth are chamfered proportionally based on the `chamfer` argument which specifies the fraction of the teeth tips
+//   to remove.  The teeth valleys are chamfered by half the specified value to ensure that there is room for the parts
+//   to mate.  If you use the rounding parameter then the roundings cut away the chamfer corners, so chamfered and rounded
+//   joints are compatible with each other.  Note that rounding doesn't always produce a smooth transition to the roundover,
+//   particularly with large cone angle.  
+//   The base is added based on the unchamfered dimensions of the joint, and the "teeth_bot" anchor is located
+//   based on the unchamfered dimensions.
+//   .
+//   By default the teeth are symmetric, which is ideal for registration and for situations where loading may occur in either
+//   direction.   The skew parameter will skew the teeth by the specified amount, where a skew of ±1 gives a tooth with a vertical
+//   side either on the left or the right.  Intermediate values will produce partially skewed teeth.  Note that the skew
+//   applies after the tooth profile is computed with the specified tooth_angle, which means that the skewed tooth will
+//   have an altered tooth angle from the one specified.
+//   .
+//   The joint is constructed with a tooth peak aligned with the X+ axis.  
+//   For two hirth joints to mate they must have the same tooth count, opposite cone angles, and the chamfer/rounding values
+//   must be equal.  (One can be chamfered and one rounded, but with the same value.)  The rotation required to mate the parts
+//   depends on the skew and whether the tooth count is odd or even.  To apply this rotation automatically, set `rot=true`.
+//   .
+//   When you pick extreme parameters such as very large cone angle, or very small tooth count (e.g. 2 or 3), the joint may
+//   develop a weird shape, and the shape may be unexpectedly sensitive to things like whether chamfering is enabled.  It is difficult
+//   to identify the point where the shapes become odd, or even perhaps invalid.  For example, with 2 teeth a skew of 0.95 works fine, but
+//   a skew of 0.97 produces a truncated shape and 0.99 produces a 2-part shape.  A skew of 1 produces a degenerate, invalid shape.  
+//   Since it's hard to determine which parameters, exactly, produce "bad" outcomes, we have chosen not to limit the production
+//   of the extreme shapes, so take care if using extreme parameter values.  
+// Named Anchors:
+//   "teeth_bot" = center of the joint, aligned with the bottom of the (unchamfered/unrounded) teeth, pointing DOWN.  
+// Arguments:
+//   n = number of teeth
+//   ir/id = inner radius or diameter
+//   or/od = outer radius or diameter
+//   tooth_angle = nominal tooth angle.  Default: 60
+//   cone_angle = raise or lower the angle of the teeth in the radial direction.  Default: 0
+//   skew = skew the tooth shape.  Default: 0
+//   chamfer = chamfer teeth by this fraction at tips and half this fraction at valleys.  Default: 0
+//   rounding = round the teeth by this fraction at the tips, and half this fraction at valleys.  Default: 0
+//   rot = if true rotate so the part will mate (via attachment) with another identical part.  Default: false
+//   base = add base of this height to the bottom.  Default: 1
+//   crop = crop to a cylindrical shape.  Default: false
+//   anchor = Translate so anchor point is at origin (0,0,0).  See [anchor](attachments.scad#subsection-anchor).  Default: `CENTER`
+//   spin = Rotate this many degrees around the Z axis after anchor.  See [spin](attachments.scad#subsection-spin).  Default: `0`
+//   orient = Vector to rotate top towards, after spin.  See [orient](attachments.scad#subsection-orient).  Default: `UP`
+// Example(3D,NoScale):  Basic uncropped hirth spline
+//   hirth(32,20,50);
+// Example(3D,NoScale): Raise cone angle
+//   hirth(32,20,50,cone_angle=30);
+// Example(3D,NoScale): Lower cone angle
+//   hirth(32,20,50,cone_angle=-30);
+// Example(3D,NoScale): Adding a large base
+//   hirth(20,20,50,base=20);
+// Example(3D,NoScale): Only 8 teeth, with chamfering
+//   hirth(8,20,50,tooth_angle=60,base=10,chamfer=.1);
+// Example(3D,NoScale): Only 8 teeth, cropped
+//   hirth(8,20,50,tooth_angle=60,base=10,chamfer=.1, crop=true);
+// Example(3D,NoScale): Only 8 teeth, with rounding
+//   hirth(8,20,50,tooth_angle=60,base=10,rounding=.1);
+// Example(3D,NoScale): Only 8 teeth, different tooth angle, cropping with $fn to crop cylinder aligned with teeth
+//   hirth(8,20,50,tooth_angle=90,base=10,rounding=.05,crop=true,$fn=48);
+// Example(3D,NoScale): Two identical parts joined together (with 1 unit offset to reveal the joint line).  With odd tooth count and no skew the teeth line up correctly:
+//   hirth(27,20,50, tooth_angle=60,base=2,chamfer=.05)
+//     up(1) attach(CENTER,CENTER)
+//       hirth(27,20,50, tooth_angle=60,base=2,chamfer=.05);
+// Example(3D,NoScale): Two conical parts joined together, with opposite cone angles for a correct joint.  With an even tooth count one part needs to be rotated for the parts to align:
+//   hirth(26,20,50, tooth_angle=60,base=2,cone_angle=30,chamfer=.05)
+//     up(1) attach(CENTER,CENTER)
+//       hirth(26,20,50, tooth_angle=60,base=2,cone_angle=-30, chamfer=.05, rot=true);
+// Example(3D,NoScale): Using skew to create teeth with vertical faces
+//   hirth(17,20,50,skew=-1, base=5, chamfer=0.05);
+// Example(3D,NoScale): If you want to change how tall the teeth are you do that by changing the tooth angle.  Increasing the tooth angle makes the teeth shorter:
+//   hirth(17,20,50,tooth_angle=120,skew=0, base=5, rounding=0.05, crop=true);
+
+module hirth(n, ir, or, id, od, tooth_angle=60, cone_angle=0, chamfer, rounding, base=1, crop=false,skew=0, rot=false, orient,anchor,spin)
+{
+  ir = get_radius(r=ir,d=id);
+  or = get_radius(r=or,d=od);
+  dummy = assert(all_positive([ir]), "ir/id must be a positive value")
+          assert(all_positive([or]), "or/od must be a positive value")
+          assert(is_int(n) && n>1, "n must be an integer larger than 1")
+          assert(is_finite(skew) && abs(skew)<=1, "skew must be a number between -1 and 1")
+          assert(ir<or, "inside radius (ir/id) must be smaller than outside radius (or/od)")
+          assert(all_positive([tooth_angle]) && tooth_angle<360*(n-1)/2/n, str("tooth angle must be between 0 and ",360*(n-1)/2/n," for spline with ",n," teeth."))
+          assert(num_defined([chamfer,rounding]) <=1, "Cannot define both chamfer and rounding")
+          assert(is_undef(chamfer) || all_nonnegative([chamfer]) && chamfer<1/2, "chamfer must be a non-negative value smaller than 1/2")
+          assert(is_undef(rounding) || all_nonnegative([rounding]) && rounding<1/2, "rounding must be a non-negative value smaller than 1/2")
+          assert(all_positive([base]), "base must be a positive value") ;
+  tooth_height = sin(180/n) / tan(tooth_angle/2);     // Normalized tooth height
+  cone_height = -tan(cone_angle);                        // Normalized height change corresponding to the cone angle
+  ridge_angle = atan(tooth_height/2 + cone_height);
+  valley_angle = atan(-tooth_height/2 + cone_height);
+  angle = 180/n;    // Half the angle occupied by each tooth going around the circle
+  
+  factor = crop ? 3 : 1;   // Make it oversized when crop is true
+
+// project spherical coordinate point onto cylinder of radius r
+  cyl_proj = function (r,theta_phi)
+     [for(pt=theta_phi)
+        let(xyz = spherical_to_xyz(1,pt[0], 90-pt[1]))
+        r * xyz / norm(point2d(xyz))];
+
+  edge = cyl_proj(or,[[-angle, valley_angle], [0, ridge_angle]]);
+  cutfrac = first_defined([chamfer,rounding,0]);
+  rounding = rounding==0? undef:rounding;
+  ridgecut=xyz_to_spherical(lerp(edge[0],edge[1], 1-cutfrac));
+  valleycut=xyz_to_spherical(lerp(edge[0],edge[1], cutfrac/2));
+  ridge_chamf = [ridgecut.y,90-ridgecut.z];
+  valley_chamf = [valleycut.y,90-valleycut.z];
+  basicprof = [
+                if (is_def(rounding)) [-angle, valley_chamf.y],
+                valley_chamf,
+                ridge_chamf
+              ];
+  full = deduplicate(concat(basicprof, reverse(xflip(basicprof))));
+  skewed = back(valley_angle, skew(sxy=skew*angle/(ridge_angle-valley_angle),fwd(valley_angle,full)));
+  pprofile = is_undef(rounding) ? skewed
+          :
+            let(
+                segs = max(16,segs(or*rounding)),
+                                // Using computed values for the joints lead to round-off error issues
+                joints = [(skewed[1]-skewed[0]).x, (skewed[3]-skewed[2]).x/2, (skewed[3]-skewed[2]).x/2,(skewed[5]-skewed[4]).x ],
+                roundpts = round_corners(skewed, joint=joints, closed=false,$fn=segs)
+            )
+            roundpts;
+  profile = [
+               for(i=[0:1:len(pprofile)-2]) each [pprofile[i],
+                                                  if (pprofile[i+1].x-pprofile[i].x > 90)    // Interpolate an extra point if angle > 90 deg
+                                                       let(
+                                                            edge = cyl_proj(or, select(pprofile,i,i+1)),
+                                                            cutpt = xyz_to_spherical(lerp(edge[0],edge[1],.48))  // Exactly .5 is too close to or crosses the origin
+                                                       )
+                                                       [cutpt.y,90-cutpt.z]
+                                                 ], 
+               last(pprofile)
+             ];
+
+  // This code computes the realized tooth angle
+  //  out = cyl_proj(or, pprofile);
+  //  in = cyl_proj(ir,pprofile);
+  //  p1 = plane3pt(out[0], out[1], in[1]);
+  //  p2 = plane3pt(out[2], out[1], in[1]);
+  //  echo(toothang=vector_angle(plane_normal(p1), plane_normal(p2)));
+  
+  bottom = min([tan(valley_angle)*ir,tan(valley_angle)*or])-base-cone_height*ir;
+  ang_ofs = !rot ? -skew*angle
+          :  n%2==0 ? -(angle-skew*angle)  - skew*angle
+          :  -angle*(2-skew)-skew*angle;
+
+  topinner = down(cone_height*ir,[for(ang=lerpn(0,360,n,endpoint=false))
+                                  each zrot(ang+ang_ofs,cyl_proj(ir/factor,profile))]);
+  topouter = down(cone_height*ir,[for(ang=lerpn(0,360,n,endpoint=false))
+                                  each zrot(ang+ang_ofs,cyl_proj(factor*or,profile))]);
+
+  safebottom = min(min(column(topinner,2)), min(column(topouter,2))) - base - (crop?1:0);
+  
+  botinner = [for(val=topinner) [val.x,val.y,safebottom]];
+  botouter = [for(val=topouter) [val.x,val.y,safebottom]];  
+  vert = [topouter, topinner, botinner, botouter];
+
+  datamin = min(min(column(topinner,2)), min(column(topouter,2)));
+  
+  anchors = [
+             named_anchor("teeth_bot", [0,0,bottom], DOWN)
+            ];
+  attachable(anchor=anchor,spin=spin,orient=orient, r=or, h=-2*bottom,anchors=anchors){
+      intersection(){
+        vnf_polyhedron(vnf_vertex_array(vert, reverse=true, col_wrap=true, row_wrap=true),convexity=min(10,n));
+        if (crop)
+           zmove(bottom)tube(or=or,ir=ir,height=4*or,anchor=BOT,$fa=1,$fs=1);
+      }
+    children();
+  }
+}
 
 // vim: expandtab tabstop=4 shiftwidth=4 softtabstop=4 nowrap

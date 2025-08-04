@@ -2,6 +2,12 @@
 
 A customizable **Polyhedral Dice Generator** for OpenSCAD.
 
+## PolyDiceGenerator v0.28.0 (SayHiBen Fork)
+
+- **MAJOR REFACTORING**: Restructured codebase from monolithic single file into modular architecture
+- Verified geometric output identical to original through STL comparison
+- Updates BOSL2 library with latest files (version number has not changed, but source has)
+
 ## PolyDiceGenerator v0.27.5
 
 - Updated included BOSL2 library to 2.0.716
